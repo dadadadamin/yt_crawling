@@ -76,3 +76,9 @@ class HomeYoutuberCard(BaseModel):
     category: Optional[str] = Field(None, description="서비스 자체 카테고리 (예: 건강/라이프스타일)")
     engagement_rate: Optional[float] = Field(None, description="참여율 (%)")
     estimated_price: Optional[str] = Field(None, description="예상 가격 (예: ₩2,000,000)")
+
+
+class ChannelWithMetrics(ChannelDetails):
+    subscriber_count: Optional[int] = None  # 부모에도 있지만 명시적으로 유지
+    engagement_rate: Optional[float] = None # % (최근 영상 평균)
+    roi: Optional[float] = None             # 임시: subscriber_count 사용
