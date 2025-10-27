@@ -79,9 +79,9 @@ def update_influencer_data():
                     print(f"[CREATE] {details.title} (구독자: {details.subscriber_count})")
 
                 # 7. 5명 처리할 때마다 DB에 중간 저장 (commit)
-                if channel_ids.index(channel_id) % 5 == 0:
-                    print(f"[ERROR] {channel_id} 처리 중 오류: {e}")
-                    session.rollback() # 오류 발생 시 롤백
+                if channel_ids.index(channel_id) % 5 == 0 and channel_ids.index(channel_id) > 0:
+                    print(f"[COMMIT] 5개 항목 처리 완료. DB에 중간 저장합니다.")
+                    session.commit() # <-- 'commit'으로 수정
             
             except Exception as e:
                 print(f"[ERROR] {channel_id} 처리 중 오류: {e}")
