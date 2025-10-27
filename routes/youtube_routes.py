@@ -1,4 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlmodel import Session, select, func 
+from db import get_session, Influencer
 from models.youtube_models import (
     SearchReq, KRPopularReq, VideoStatsReq, CommentsSummaryReq,
     ChannelDetails, VideoStatsOut, CommentsSummaryOut
@@ -13,6 +15,9 @@ youtube_router = APIRouter(tags=["YouTube API"])
 def health():
     """서버 정상 동작 여부 확인용"""
     return {"ok": True}
+
+# 홈 화면 유튜버 리스 (Get) - DB에서 초고속 조회
+@youtube_router.get("/home-list", response_model=list[HomeYoutuberCard])
 
 #키워드로 유튜버 검색
 @youtube_router.post("/youtubers/search", response_model=list[ChannelDetails])
