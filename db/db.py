@@ -1,9 +1,20 @@
+import sys
+import os
 from sqlmodel import SQLModel, create_engine, Field, Relationship, Session, select
+from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 
-# 1. DB 파일 이름 정의 (SQLite 파일 기반 DB)
-sqlite_file_name = "db/influencer.db"
+# 이 파일(db.py)의 위치를 기준으로 프로젝트 루트 폴더의 경로를 계산
+# ( .../yt_crawling/db/db.py -> .../yt_crawling/ )
+ROOT_DIR = Path(__file__).resolve().parent.parent
+# 파이썬이 모듈을 찾을 수 있도록 루트 폴더를 시스템 경로에 추가
+sys.path.append(str(ROOT_DIR))
+
+# 1. DB 파일 이름 정의 (루트 폴더 기준 'db/influencer.db')
+DB_DIR = ROOT_DIR / "db"  # /.../yt_crawling/db
+DB_DIR.mkdir(exist_ok=True) # db 폴더가 없으면 생성
+sqlite_file_name = DB_DIR / "influencer.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 # 2. DB 엔진 생성 (connect_args는 SQLite에서만 필요)

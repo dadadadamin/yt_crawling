@@ -236,7 +236,6 @@ def get_recent_video_stats(channel_id: str, num_videos: int = 5):
         print(f"[Error] get_recent_video_stats 실패 (Channel: {channel_id}): {e}")
         return []
 
-
 # '가져온 통계'로 참여율 '계산하기'
 def calculate_engagement_rate_from_stats(stats: list, subscriber_count: int) -> float | None:
     """

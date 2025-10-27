@@ -22,7 +22,6 @@ from utils.youtube_utils import (
     get_recent_video_stats,
     calculate_engagement_rate_from_stats
 )
-# from models.youtube_models import VideoStatsOut # <-- Video 테이블용이므로 제거
 
 print("[Scheduler] 스케줄러 시작. 6시간마다 데이터를 업데이트합니다.")
 
@@ -39,8 +38,6 @@ CATEGORIES_TO_CRAWL = {
     "스포츠": 10,
     "경제": 10   # 총 100명
 }
-
-# (참고) sync_videos_to_db 함수 정의가 있었다면 이 부분에서 삭제
 
 def update_influencer_data():
     """
@@ -77,7 +74,7 @@ def update_influencer_data():
                         continue
                     details = details_list[0]
                 
-                    # 5-1. (신규) 구독자 수 필터링
+                    # 5-1. 구독자 수 필터링
                     sub_count = details.subscriber_count or 0
                     if not (100000 <= sub_count <= 1000000):
                         print(f"[SKIP] {details.title} (구독자: {sub_count}) - 범위(10만~100만) 미달")
@@ -93,7 +90,19 @@ def update_influencer_data():
                         (details.subscriber_count or 0)
                     )
 
-                    # 8. Influencer 테이블 저장/업데이트 (DB 작업 1)
+                    # 구독자 수 기반 "예상 가격" 자동 계산
+                    price = "가격 문의" # 기본값 (10,000 ~ 99,999명)
+                    
+                    if 100000 <= sub_count <= 200000:
+                        price = "100만원"
+                    elif 200001 <= sub_count <= 400000:
+                        price = "200만원"
+                    elif 400001 <= sub_count <= 500000:
+                        price = "300만원"
+                    elif 500001 <= sub_count <= 1000000:
+                        price = "500만원"
+                    
+                    # 8. Influencer 테이블 저장/업데이트 
                     if db_influencer:
                         # (UPDATE)
                         db_influencer.title = details.title
@@ -103,7 +112,9 @@ def update_influencer_data():
                         db_influencer.thumbnail_url = details.thumbnail_url
                         db_influencer.engagement_rate = eng_rate
                         db_influencer.last_updated = datetime.now()
-                        db_influencer.category = category_keyword # <-- ★★★ 핵심 ★★★
+                        db_influencer.category = category_keyword 
+                        db_influencer.estimated_price = price
+
                         print(f"[UPDATE] {details.title} (카테고리: {category_keyword})")
                     
                     else:
@@ -121,26 +132,20 @@ def update_influencer_data():
                             engagement_rate=eng_rate,
                             last_updated=datetime.now(),
                             category=category_keyword, # <-- 키워드 저장
-                            estimated_price="가격 문의" # 예상 매출액은 수동 설정
+                            estimated_price=price 
                         )
                         session.add(db_influencer)
-                        print(f"[CREATE] {details.title} (카테고리: {category_keyword})")
-                    
-                    # --- (3) Video 테이블 저장 로직 제거 ---
-                    # 9. Video 테이블 저장/업데이트 (DB 작업 2)
-                    # if video_stats:
-                    #     sync_videos_to_db(session, video_stats, channel_id) # <-- 이 부분 제거
-
+                        print(f"[CREATE] {details.title} (카테고리: {category_keyword}, 가격: {price})")
+                        
                 except Exception as e:
                     print(f"[ERROR] {channel_id} 처리 중 오류: {e}")
                     session.rollback() # 이 채널만 롤백
             
-            # 10. (중요) 하나의 카테고리(키워드)가 끝나면 DB에 저장
+            # 10. 하나의 카테고리(키워드)가 끝나면 DB에 저장
             print(f"[COMMIT] '{category_keyword}' 카테고리 작업 완료. DB에 저장합니다.")
             session.commit()
     
     print(f"\n[{datetime.now()}] 모든 키워드 데이터 업데이트 작업 완료.")
-
 
 # --- 스케줄러 실행 ---
 # 1. 서버 시작 시 1회 즉시 실행 (DB 채우기용)
