@@ -63,3 +63,10 @@ class CommentsSummaryOut(BaseModel):
     keywords: List[Dict[str, Any]]
     sentiment: Optional[Dict[str, Any]] = None
     counts: Dict[str, int]
+
+
+
+class ChannelWithMetrics(ChannelDetails):
+    subscriber_count: Optional[int] = None  # 부모에도 있지만 명시적으로 유지
+    engagement_rate: Optional[float] = None # % (최근 영상 평균)
+    roi: Optional[float] = None             # 임시: subscriber_count 사용
