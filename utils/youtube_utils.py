@@ -292,46 +292,55 @@ def basic_sentiment_summary(texts: List[str]) -> Dict[str, Any]:
         "examples": {"positive": pos_ex, "negative": neg_ex},
     }
 
-# 참여율 계산 로직
-def calculate_engagement_rate(channel_id: str, subscriber_count: int, num_videos: int = 5) -> float | None:
+# 채널의 최신 영상 통계 목록 '가져오기'
+def get_recent_video_stats(channel_id: str, num_videos: int = 5):
     """
-    채널의 최신 N개 영상의 (좋아요+댓글) / 구독자 수로 참여율(%) 계산
+    채널의 최신 N개 영상 통계를 리스트로 반환 (API 호출)
+    """
+    from models.youtube_models import VideoStatsOut # 함수 내에서 import
+    
+    try:
+        # 1. 채널의 업로드 플레이리스트 ID 가져오기
+        playlist_id = get_uploads_playlist_id(channel_id)
+        if not playlist_id:
+            return []
+
+        # 2. 최신 N개 영상 ID 가져오기
+        video_ids = get_recent_video_ids(playlist_id, max_results=num_videos)
+        if not video_ids:
+            return []
+
+        # 3. N개 영상의 통계 가져오기
+        stats = get_video_stats(video_ids) # List[VideoStatsOut]
+        return stats
+    
+    except Exception as e:
+        print(f"[Error] get_recent_video_stats 실패 (Channel: {channel_id}): {e}")
+        return []
+
+
+# '가져온 통계'로 참여율 '계산하기'
+def calculate_engagement_rate_from_stats(stats: list, subscriber_count: int) -> float | None:
+    """
+    (API 호출 없음) 영상 통계 리스트(stats)와 구독자 수로 참여율(%) 계산
     """
     if not subscriber_count or subscriber_count == 0:
         return None # 구독자 없으면 계산 불가
+    if not stats:
+        return 0.0
+
+    # 평균 (좋아요 + 댓글 수) 계산
+    total_likes = 0
+    total_comments = 0
+    for s in stats:
+        total_likes += (s.like_count or 0)
+        total_comments += (s.comment_count or 0)
+
+    if len(stats) == 0:
+        return 0.0
+
+    avg_engagement = (total_likes + total_comments) / len(stats)
     
-    try:
-        # 1. 채널의 업로드 플레이리스트 ID 가져오기 (utils.py 안의 함수 호출)
-        playlist_id = get_uploads_playlist_id(channel_id)
-        if not playlist_id:
-            return None
-
-        # 2. 최신 N개 영상 ID 가져오기 (utils.py 안의 함수 호출)
-        video_ids = get_recent_video_ids(playlist_id, max_results=num_videos)
-        if not video_ids:
-            return None
-        
-        # 3. N개 영상의 통계 가져오기 (utils.py 안의 함수 호출)
-        stats = get_video_stats(video_ids)
-        if not stats:
-            return None
-        
-        # 4. 평균 (좋아요 + 댓글 수) 계산
-        total_likes = 0
-        total_comments = 0
-        for s in stats:
-            total_likes += (s.like_count or 0)
-            total_comments += (s.comment_count or 0)
-
-        if len(stats) == 0:
-            return 0.0
-        
-        avg_engagement = (total_likes + total_comments) / len(stats)
-
-        # 5. 참여율 = (평균 참여) / 구독자 수 * 100
-        rate = (avg_engagement / subscriber_count) * 100
-        return round(rate, 2) # 소수점 2자리까지
-
-    except Exception as e:
-        print(f"[Error] 참여율 계산 실패 (Channel: {channel_id}): {e}")
-        return None
+    # 참여율 = (평균 참여) / 구독자 수 * 100
+    rate = (avg_engagement / subscriber_count) * 100
+    return round(rate, 2) # 소수점 2자리까지
