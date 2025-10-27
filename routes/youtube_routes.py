@@ -3,7 +3,7 @@ from sqlmodel import Session, select, func
 from db import get_session, Influencer
 from models.youtube_models import (
     SearchReq, KRPopularReq, VideoStatsReq, CommentsSummaryReq,
-    ChannelDetails, VideoStatsOut, CommentsSummaryOut
+    ChannelDetails, VideoStatsOut, CommentsSummaryOut, HomeYoutuberCard
 )
 from utils.youtube_utils import *
 
@@ -16,8 +16,32 @@ def health():
     """서버 정상 동작 여부 확인용"""
     return {"ok": True}
 
-# 홈 화면 유튜버 리스 (Get) - DB에서 초고속 조회
+# 홈 화면 유튜버 리스트 (Get) - DB에서 조회
 @youtube_router.get("/home-list", response_model=list[HomeYoutuberCard])
+def get_home_youtuber_list(session: Session = Depends(get_session)): # DB 세션 주입
+    """
+    - (DB) 홈 화면에 노출할 유튜버 리스트 50명을 무작위로 반환
+    """
+
+    # 1. DB에서 Influencer 테이블을 랜덤으로 50명 조회
+    statement = select(Influencer).order_by(func.random()).limit(50)
+    influencers = session.exec(statement).all()
+
+    # 2. DB 결과(Influencer)를 응답 모델(HomeYoutuberCard)로 변환
+    result_cards = []
+    for inf in influencers:
+        card = HomeYoutuberCard(
+            channel_id=inf.channel_id,
+            channel_title=inf.title,
+            subscriber_count=inf.subscriber_count,
+            thumbnail_url=inf.thumbnail_url,
+            category=inf.category or "미분류", # DB에 없으면 기본값
+            engagement_rate=inf.engagement_rate,
+            estimated_price=inf.estimated_price or "가격 문의" # DB에 없으면 기본값
+        )
+        result_cards.append(card)
+    
+    return result_cards
 
 #키워드로 유튜버 검색
 @youtube_router.post("/youtubers/search", response_model=list[ChannelDetails])
