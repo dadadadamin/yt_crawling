@@ -64,6 +64,18 @@ class CommentsSummaryOut(BaseModel):
     sentiment: Optional[Dict[str, Any]] = None
     counts: Dict[str, int]
 
+# 홈 화면 유튜버 카드 (응답 모델)
+class HomeYoutuberCard(BaseModel):
+    # 유튜브 API에서 가져오는 실제 데이터
+    channel_id: str
+    channel_title: Optional[str] = None
+    subscriber_count: Optional[int] = None
+    thumbnail_url: Optional[str] = None
+
+    # 우리가 만들어야할 임시데이터 
+    category: Optional[str] = Field(None, description="서비스 자체 카테고리 (예: 건강/라이프스타일)")
+    engagement_rate: Optional[float] = Field(None, description="참여율 (%)")
+    estimated_price: Optional[str] = Field(None, description="예상 가격 (예: ₩2,000,000)")
 
 
 class ChannelWithMetrics(ChannelDetails):

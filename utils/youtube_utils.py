@@ -62,6 +62,48 @@ def fetch_channel_details(channel_ids: List[str], source_tag: str):
         sleep_short()
     return rows
 
+# 키워드 기반 채널 ID 검색
+def search_channels_by_keyword(keyword: str, top_n: int, region: str = "KR", lang: str = "ko") -> List[str]:
+    """
+    키워드로 채널을 검색하여 ID 목록 반환 (Search: list API)
+    """
+    ids, page_token = [], None
+
+    # API 호출 횟수를 줄이기 위해 maxResult 50 설정
+    while len(ids) < top_n:
+        params = {
+            "part": "snippet",
+            "type": "channel",
+            "q": keyword,
+            "maxResults": min(50, top_n - len(ids) + 20), # 넉넉하게 요청
+            "key": API_KEY,
+            "order": "relevance", # 관련도 순
+            "regionCode": region,
+            "relevanceLanguage": lang
+        }
+        if page_token:
+            params["pageToken"] = page_token
+
+        data = safe_get(SEARCH_URL, params)
+
+        # 채널 ID만 추출
+        for item in data.get("items", []):
+            ch = item.get("id", {}).get("channelId")
+            if ch and ch not in ids:
+                ids.append(ch)
+                if len(ids) >= top_n:
+                    break # 목표한 10개를 채우면 중단
+
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break # 다음 페이지가 없으면 중단
+        sleep_short()
+    
+    return ids[:top_n] # 정확히 top_n 개수만큼 잘라서 반환
+
+
+# 인기 영상 기반 채널 수집
+
 def collect_channels_from_most_popular(region_code: str = "KR", pages: int = 5) -> List[str]:
     ch_ids = set()
     page_token, seen = None, 0
@@ -167,6 +209,58 @@ def basic_sentiment_summary(texts: List[str]) -> Dict[str, Any]:
             neu += 1
     return {"positive": pos, "neutral": neu, "negative": neg,
             "examples": {"positive": pos_ex, "negative": neg_ex}}
+
+# 채널의 최신 영상 통계 목록 '가져오기'
+def get_recent_video_stats(channel_id: str, num_videos: int = 5):
+    """
+    채널의 최신 N개 영상 통계를 리스트로 반환 (API 호출)
+    """
+    from models.youtube_models import VideoStatsOut # 함수 내에서 import
+    
+    try:
+        # 1. 채널의 업로드 플레이리스트 ID 가져오기
+        playlist_id = get_uploads_playlist_id(channel_id)
+        if not playlist_id:
+            return []
+
+        # 2. 최신 N개 영상 ID 가져오기
+        video_ids = get_recent_video_ids(playlist_id, max_results=num_videos)
+        if not video_ids:
+            return []
+
+        # 3. N개 영상의 통계 가져오기
+        stats = get_video_stats(video_ids) # List[VideoStatsOut]
+        return stats
+    
+    except Exception as e:
+        print(f"[Error] get_recent_video_stats 실패 (Channel: {channel_id}): {e}")
+        return []
+
+# '가져온 통계'로 참여율 '계산하기'
+def calculate_engagement_rate_from_stats(stats: list, subscriber_count: int) -> float | None:
+    """
+    (API 호출 없음) 영상 통계 리스트(stats)와 구독자 수로 참여율(%) 계산
+    """
+    if not subscriber_count or subscriber_count == 0:
+        return None # 구독자 없으면 계산 불가
+    if not stats:
+        return 0.0
+
+    # 평균 (좋아요 + 댓글 수) 계산
+    total_likes = 0
+    total_comments = 0
+    for s in stats:
+        total_likes += (s.like_count or 0)
+        total_comments += (s.comment_count or 0)
+
+    if len(stats) == 0:
+        return 0.0
+
+    avg_engagement = (total_likes + total_comments) / len(stats)
+    
+    # 참여율 = (평균 참여) / 구독자 수 * 100
+    rate = (avg_engagement / subscriber_count) * 100
+    return round(rate, 2) # 소수점 2자리까지
 
 def compute_channel_engagement_rate(channel_id: str, max_videos: int = 8) -> Optional[float]:
     up = get_uploads_playlist_id(channel_id)
