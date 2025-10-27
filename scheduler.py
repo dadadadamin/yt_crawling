@@ -93,7 +93,7 @@ def update_influencer_data():
 
 # --- 스케줄러 실행 ---
 # 1. 서버 시작 시 1회 즉시 실행, 이후에는 주석처리 하여 Youtube API 과도 호출 방지
-update_influencer_data()
+# update_influencer_data()
 
 # 2. 이후 6시간마다 update_influencer_data 함수 실행
 schedule.every(6).hours.do(update_influencer_data)
