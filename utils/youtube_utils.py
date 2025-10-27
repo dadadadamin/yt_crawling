@@ -72,6 +72,46 @@ def fetch_channel_details(channel_ids: List[str], source_tag: str):
         sleep_short()
     return rows
 
+# 키워드 기반 채널 ID 검색
+def search_channels_by_keyword(keyword: str, top_n: int, region: str = "KR", lang: str = "ko") -> List[str]:
+    """
+    키워드로 채널을 검색하여 ID 목록 반환 (Search: list API)
+    """
+    ids, page_token = [], None
+
+    # API 호출 횟수를 줄이기 위해 maxResult 50 설정
+    while len(ids) < top_n:
+        params = {
+            "part": "snippet",
+            "type": "channel",
+            "q": keyword,
+            "maxResults": min(50, top_n - len(ids) + 20), # 넉넉하게 요청
+            "key": API_KEY,
+            "order": "relevance", # 관련도 순
+            "regionCode": region,
+            "relevanceLanguage": lang
+        }
+        if page_token:
+            params["pageToken"] = page_token
+
+        data = safe_get(SEARCH_URL, params)
+
+        # 채널 ID만 추출
+        for item in data.get("items", []):
+            ch = item.get("id", {}).get("channelId")
+            if ch and ch not in ids:
+                ids.append(ch)
+                if len(ids) >= top_n:
+                    break # 목표한 10개를 채우면 중단
+
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break # 다음 페이지가 없으면 중단
+        sleep_short()
+    
+    return ids[:top_n] # 정확히 top_n 개수만큼 잘라서 반환
+
+
 # 인기 영상 기반 채널 수집
 
 def collect_channels_from_most_popular(region_code: str = "KR", pages: int = 5) -> List[str]:

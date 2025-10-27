@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select, func 
-from db import get_session, Influencer
+from db.db import get_session, Influencer
 from models.youtube_models import (
     SearchReq, KRPopularReq, VideoStatsReq, CommentsSummaryReq,
     ChannelDetails, VideoStatsOut, CommentsSummaryOut, HomeYoutuberCard

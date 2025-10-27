@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from routes.youtube_routes import youtube_router
-from db import create_db_and_tables  
+from db.db import create_db_and_tables  
 import uvicorn
 
 app = FastAPI(title="InfluROI YouTube API")

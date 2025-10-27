@@ -24,3 +24,5 @@ __test__/
 
 *.csv
 *.json
+
+db/influencer.db

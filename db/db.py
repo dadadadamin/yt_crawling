@@ -3,7 +3,7 @@ from typing import List, Optional
 from datetime import datetime
 
 # 1. DB 파일 이름 정의 (SQLite 파일 기반 DB)
-sqlite_file_name = "influencer.db"
+sqlite_file_name = "db/influencer.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 
 # 2. DB 엔진 생성 (connect_args는 SQLite에서만 필요)

@@ -1,8 +1,18 @@
+import sys
+import os
+from pathlib import Path
+
+# 이 파일(scheduler.py)의 위치를 기준으로 프로젝트 루트 폴더의 경로를 계산
+# ( .../yt_crawling/utils/scheduler.py -> .../yt_crawling/ )
+ROOT_DIR = Path(__file__).resolve().parent.parent
+# 파이썬이 모듈을 찾을 수 있도록 루트 폴더를 시스템 경로에 추가
+sys.path.append(str(ROOT_DIR))
+
 import schedule
 import time
 from datetime import datetime
 from sqlmodel import Session, select
-from db import engine, Influencer  # DB 엔진과 모델 가져오기
+from db.db import engine, Influencer  # DB 엔진과 모델 가져오기
 from utils.youtube_utils import (
     collect_channels_from_most_popular, 
     fetch_channel_details,
