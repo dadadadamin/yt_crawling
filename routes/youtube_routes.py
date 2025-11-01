@@ -3,7 +3,7 @@ from sqlmodel import Session, select, func
 from db.db import get_session, Influencer
 from models.youtube_models import (
     SearchReq, KRPopularReq, VideoStatsReq, CommentsSummaryReq,
-    ChannelDetails, VideoStatsOut, CommentsSummaryOut, HomeYoutuberCard, ChannelWithMetrics
+    ChannelDetails, VideoStatsOut, CommentsSummaryOut, HomeYoutuberCard, ChannelWithMetrics,LatestCommentsAnalyzeReq, LatestCommentsAnalyzeRes
 )
 from utils.youtube_utils import *
 
@@ -101,17 +101,30 @@ def kr_popular(req: KRPopularReq):
     """
     - 한국 지역에서 인기 영상 기반으로 채널 목록 추출
     - ROI(임시), 참여율 포함하여 반환
+    - 구독자 수 100만 이상 채널만 필터링
     """
+    # 1 인기 영상에서 채널 ID 수집
     ids = collect_channels_from_most_popular(region_code=req.region, pages=req.pages)
     if not ids:
         return []
 
+    # 2 채널 상세정보 조회
     details = fetch_channel_details(ids, source_tag=f"kr-popular:{req.region}")
-    details.sort(key=lambda r: (r.subscriber_count or 0), reverse=True)
-    details = details[:req.top_n]
 
-    # ROI(임시), 참여율 계산 후 반환
-    return attach_metrics_to_channels(details)
+    # 3 구독자 수 기준 정렬
+    details.sort(key=lambda r: (r.subscriber_count or 0), reverse=True)
+
+    # 4 100만 이상 구독자 필터링
+    min_subs = 1_000_000
+    large_channels = [
+        ch for ch in details
+        if ch.subscriber_count and ch.subscriber_count >= min_subs and is_personnal_channel(ch)]
+
+    # 5 ROI(임시) 및 참여율 계산 후 반환
+    result = attach_metrics_to_channels(large_channels)
+
+    # 6 top_n 제한
+    return result[:req.top_n]
 
 
 # --------------------------
@@ -207,4 +220,45 @@ def comments_summary(req: CommentsSummaryReq):
         keywords=keywords,
         sentiment=sentiment,
         counts={"videos_scanned": len(video_pool), "comments_used": len(texts)}
+    )
+
+
+@youtube_router.post("/comments/analyze-latest", response_model=LatestCommentsAnalyzeRes)
+def analyze_latest_video_comments(req: LatestCommentsAnalyzeReq):
+    """
+    채널ID를 받아 해당 채널의 '가장 최근 영상' 1개의 댓글을:
+    1) 수집 → 2) CSV 저장(옵션) → 3) 핵심 키워드 추출 까지 수행
+    """
+    # 1) 최신 영상 조회
+    v = get_latest_video_info(req.channel_id)
+    if not v:
+        raise HTTPException(status_code=404, detail="해당 채널에서 최신 영상을 찾지 못했습니다.")
+    video_id = v["video_id"]
+    video_title = v.get("video_title")
+
+    # 2) 댓글 수집 (구조화)
+    rows = fetch_comments_structured_for_video(
+        video_id=video_id,
+        include_replies=req.include_replies,
+        max_total=req.max_comments
+    )
+
+    # 수집 텍스트만 추출
+    texts = [r.get("text") or "" for r in rows]
+
+    # 3) 키워드 분석
+    keywords = analyze_comments_keywords(texts, top_k=40)
+
+    # 4) CSV 저장 (옵션)
+    csv_path = None
+    if req.save_csv:
+        base = f"comments_{req.channel_id}_{video_id}"
+        csv_path = save_comments_to_csv(rows, req.out_dir, base)
+
+    return LatestCommentsAnalyzeRes(
+        video_id=video_id,
+        video_title=video_title,
+        comments_used=len(texts),
+        csv_path=csv_path,
+        keywords=keywords
     )

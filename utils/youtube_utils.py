@@ -1,4 +1,4 @@
-import os, time, httpx
+import os, time, httpx,csv
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from typing import List, Dict, Any, Optional
@@ -296,3 +296,198 @@ def attach_metrics_to_channels(details: list) -> list:
             roi=roi_placeholder
         ))
     return out
+
+# <최신 업로드 1개(가장 최근 영상) ID/제목 가져오기>
+def get_latest_video_info(channel_id: str) -> Optional[Dict[str, str]]:
+    """
+    채널의 업로드 재생목록에서 '가장 최근' 영상 1개의 video_id와 제목을 반환
+    """
+    up = get_uploads_playlist_id(channel_id)
+    if not up:
+        return None
+
+    # playlistItems는 최신이 먼저 오므로 maxResults=1
+    params = {
+        "part": "contentDetails",
+        "playlistId": up,
+        "maxResults": 1,
+        "key": API_KEY,
+    }
+    data = safe_get(PLAYLIST_ITEMS_URL, params)
+    items = data.get("items", [])
+    if not items:
+        return None
+    vid = items[0].get("contentDetails", {}).get("videoId")
+    if not vid:
+        return None
+
+    # 제목은 videos.list로 1회 조회
+    vinfo = safe_get(VIDEOS_URL, {"part": "snippet", "id": vid, "key": API_KEY})
+    title = None
+    if vinfo.get("items"):
+        title = (vinfo["items"][0].get("snippet") or {}).get("title")
+
+    return {"video_id": vid, "video_title": title}
+
+
+def save_comments_to_csv(rows: List[Dict[str, Any]], out_dir: str, base_name: str) -> str:
+    """
+    rows를 CSV로 저장. 파일 경로를 반환.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    safe_name = "".join(ch if ch.isalnum() else "_" for ch in base_name)[:60]
+    path = os.path.join(out_dir, f"{safe_name}.csv")
+
+    # rows 예시 키: video_id, comment_id, parent_id, author, text, like_count, published_at
+    fieldnames = ["video_id", "comment_id", "parent_id", "author", "text", "like_count", "published_at"]
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow({
+                "video_id": r.get("video_id"),
+                "comment_id": r.get("comment_id"),
+                "parent_id": r.get("parent_id"),
+                "author": r.get("author"),
+                "text": r.get("text"),
+                "like_count": r.get("like_count"),
+                "published_at": r.get("published_at"),
+            })
+    return path
+
+
+def analyze_comments_keywords(texts: List[str], top_k: int = 40) -> List[Dict[str, Any]]:
+    """
+    간단 빈도 기반 키워드 추출. (한글/영문 공백 기준 토큰화)
+    필요 시 불용어 처리/형태소 분석으로 고도화 가능.
+    """
+    # 너무 짧은/공백 문자열 제거
+    cleaned = [t.strip() for t in texts if t and t.strip()]
+    if not cleaned:
+        return []
+
+    tokens = " ".join(cleaned).split()
+    from collections import Counter
+    common = Counter(tokens).most_common(top_k)
+    return [{"keyword": k, "score": float(c), "method": "freq"} for k, c in common]
+
+
+def fetch_comments_structured_for_video(
+    video_id: str,
+    include_replies: bool = False,
+    max_total: int = 500
+) -> list[dict]:
+    """
+    commentThreads.list를 이용해
+    - 특정 영상의 댓글(+선택적으로 대댓글)을 구조화해서 수집합니다.
+    - 반환: [{video_id, comment_id, parent_id, author, text, like_count, published_at}, ...]
+    """
+    texts = []
+    fetched = 0
+    page_token = None
+
+    while True:
+        params = {
+            "part": "snippet,replies",
+            "videoId": video_id,
+            "maxResults": 100,
+            "textFormat": "plainText",
+            "key": API_KEY,
+        }
+        if page_token:
+            params["pageToken"] = page_token
+
+        data = safe_get(COMMENT_THREADS_URL, params)
+
+        for thread in data.get("items", []):
+            # 상위 댓글
+            top = thread.get("snippet", {}).get("topLevelComment", {}).get("snippet", {}) or {}
+            comment_id = thread.get("id")
+            texts.append({
+                "video_id": video_id,
+                "comment_id": comment_id,
+                "parent_id": None,
+                "author": top.get("authorDisplayName"),
+                "text": top.get("textDisplay"),
+                "like_count": top.get("likeCount"),
+                "published_at": top.get("publishedAt"),
+            })
+            fetched += 1
+
+            # 대댓글 수집 옵션
+            if include_replies:
+                replies = (thread.get("replies", {}) or {}).get("comments", []) or []
+                for rep in replies:
+                    r_snip = rep.get("snippet", {}) or {}
+                    texts.append({
+                        "video_id": video_id,
+                        "comment_id": rep.get("id"),
+                        "parent_id": comment_id,
+                        "author": r_snip.get("authorDisplayName"),
+                        "text": r_snip.get("textDisplay"),
+                        "like_count": r_snip.get("likeCount"),
+                        "published_at": r_snip.get("publishedAt"),
+                    })
+                    fetched += 1
+
+            if fetched >= max_total:
+                break
+
+        if fetched >= max_total:
+            break
+
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+
+        sleep_short()
+
+    return texts
+
+#현재 테스트용 
+#초기화면 유튜버 구성 구독자 수 100만 이상 유튜버들 나열 
+def filter_large_channels(channels: list, min_subs: int = 1000000):
+    """
+    구독자 수 기준으로 필터링.
+    channels: ChannelDetails 리스트
+    min_subs: 최소 구독자 수 (기본 100만)
+    """
+    return [
+        ch for ch in channels
+        if ch.subscriber_count is not None and ch.subscriber_count >= min_subs
+    ]
+#기업 유튜버 제외 시나리오
+def is_personnal_channel(ch)->bool:
+    '''휴리스틱 필터
+    ch:ChennelDetails
+    '''
+    title=(ch.title or"").lower()
+    desc=(ch.description or"").lower()
+
+    #키워드 기반 제외
+    corp_kw=[
+        "official","channel","music","news","entertainment", "company", "corporation","record",
+        "group","media","press","공식","뉴스","엔터","방송","레코드","기획사","agency","jyp","yg","sm","hybe","cj"
+    ]
+    if any(kw in title for kw in corp_kw):
+        return False
+    if any(desc in title for kw in corp_kw):
+        return False
+    
+    #영상수로 제외 (영상 1만개당 구독자 100만이면 제외)
+    if ch.subscriber_count and ch.video_count:
+        ratio=ch.video_count/ch.subscriber_count #영상 수/구독자 수
+        if ratio>0.01:
+            return False
+        
+    #토픽 기반 제외
+    if ch.topic_ids:
+        joined=",".join(ch.topic_ids).lower()
+        if any(k in joined for k in["music","tv","corporation"]):
+            return False
+    #국가 필터
+    if ch.country and ch.country and ch.country!="KR":
+        return False
+    
+    return True
+

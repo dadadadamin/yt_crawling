@@ -10,7 +10,7 @@ class SearchReq(BaseModel):
 
 # [인기 유튜버 요청] chart=mostPopular 기반
 class KRPopularReq(BaseModel):
-    top_n: int = 50
+    top_n: int = 100
     region: str = "KR"
     pages: int = 5
 
@@ -82,3 +82,18 @@ class ChannelWithMetrics(ChannelDetails):
     subscriber_count: Optional[int] = None  # 부모에도 있지만 명시적으로 유지
     engagement_rate: Optional[float] = None # % (최근 영상 평균)
     roi: Optional[float] = None             # 임시: subscriber_count 사용
+
+# 최신 영상 댓글 분석 요청/응답
+class LatestCommentsAnalyzeReq(BaseModel):
+    channel_id: str = Field(..., description="분석할 채널의 고유 ID (예: UC...)")
+    include_replies: bool = False
+    max_comments: int = Field(500, ge=1, le=5000)  # 한 영상에서 수집할 최대 댓글 수
+    save_csv: bool = True                           # CSV 저장 여부
+    out_dir: str = "./data"                         # CSV 저장 폴더
+
+class LatestCommentsAnalyzeRes(BaseModel):
+    video_id: Optional[str] = None
+    video_title: Optional[str] = None
+    comments_used: int
+    csv_path: Optional[str] = None
+    keywords: List[Dict[str, Any]]                 # [{keyword, score, method}]
