@@ -97,3 +97,23 @@ class LatestCommentsAnalyzeRes(BaseModel):
     comments_used: int
     csv_path: Optional[str] = None
     keywords: List[Dict[str, Any]]                 # [{keyword, score, method}]
+
+
+#자막 기반 브랜드 적합도 분석
+from pydantic import BaseModel, Field
+from typing import List, Dict, Optional
+
+class BrandAnalysisReq(BaseModel):
+    video_id: str
+    brand_keywords: List[str]
+    use_llm: bool = Field(default=True, description="OpenAI API 사용 여부")
+
+class BrandAnalysisOut(BaseModel):
+    video_id: str
+    title: str
+    description: str
+    brand_fit_score: float
+    components: Dict[str, float]
+    top_keywords: List[str]
+    matched_tags: List[str]
+    llm_reason: Optional[str]

@@ -6,6 +6,9 @@ from models.youtube_models import (
     ChannelDetails, VideoStatsOut, CommentsSummaryOut, HomeYoutuberCard, ChannelWithMetrics,LatestCommentsAnalyzeReq, LatestCommentsAnalyzeRes
 )
 from utils.youtube_utils import *
+from youtube_transcript_api import YouTubeTranscriptApi
+from utils.brand_fit import hybrid_brand_fit
+from models.youtube_models import BrandAnalysisReq, BrandAnalysisOut
 
 # 라우터 생성
 youtube_router = APIRouter(tags=["YouTube API"])
@@ -261,4 +264,49 @@ def analyze_latest_video_comments(req: LatestCommentsAnalyzeReq):
         comments_used=len(texts),
         csv_path=csv_path,
         keywords=keywords
+    )
+
+
+
+
+@youtube_router.post("/brand-analysis", response_model=BrandAnalysisOut)
+def brand_analysis(req: BrandAnalysisReq):
+    """
+    TF-IDF + 규칙 기반 + OpenAI 분석 하이브리드 브랜드 적합도 평가
+    """
+    # 1. 영상 정보
+    data = safe_get(VIDEOS_URL, {"part": "snippet", "id": req.video_id, "key": API_KEY})
+    item = (data.get("items") or [{}])[0]
+    snippet = item.get("snippet", {}) or {}
+    title = snippet.get("title", "")
+    desc = snippet.get("description", "")
+    tags = snippet.get("tags", [])
+
+    # 2. 자막
+    try:
+        transcript_list = YouTubeTranscriptApi.get_transcript(req.video_id, languages=["ko", "en"])
+        transcript = " ".join([seg["text"] for seg in transcript_list])
+    except Exception:
+        transcript = ""
+
+    # 3. 분석
+    result = hybrid_brand_fit(
+        title=title,
+        desc=desc,
+        transcript=transcript,
+        tags=tags,
+        brand_keywords=req.brand_keywords,
+        knu_tone=None,
+        use_llm=req.use_llm
+    )
+
+    return BrandAnalysisOut(
+        video_id=req.video_id,
+        title=title,
+        description=desc,
+        brand_fit_score=result["brand_fit_score"],
+        components=result["components"],
+        top_keywords=result["top_keywords"],
+        matched_tags=result["matched_tags"],
+        llm_reason=result["llm_reason"]
     )
