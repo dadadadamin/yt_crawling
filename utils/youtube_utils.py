@@ -240,23 +240,37 @@ def get_recent_video_stats(channel_id: str, num_videos: int = 5):
 def calculate_engagement_rate_from_stats(stats: list, subscriber_count: int) -> float | None:
     """
     (API 호출 없음) 영상 통계 리스트(stats)와 구독자 수로 참여율(%) 계산
+    딕셔너리 또는 객체 모두 처리 가능
     """
     if not subscriber_count or subscriber_count == 0:
         return None # 구독자 없으면 계산 불가
     if not stats:
         return 0.0
 
-    # 평균 (좋아요 + 댓글 수) 계산
+    # 평균 (좋아요 + 댓글 수 + 조회수) 계산
     total_likes = 0
     total_comments = 0
+    total_views = 0
+    
     for s in stats:
-        total_likes += (s.like_count or 0)
-        total_comments += (s.comment_count or 0)
-
+        # 딕셔너리 또는 객체 모두 처리
+        if isinstance(s, dict):
+            like_count = s.get('like_count', 0) or 0
+            comment_count = s.get('comment_count', 0) or 0
+            view_count = s.get('view_count', 0) or 0
+        else:
+            like_count = getattr(s, 'like_count', None) or 0
+            comment_count = getattr(s, 'comment_count', None) or 0
+            view_count = getattr(s, 'view_count', None) or 0
+        
+        total_likes += like_count
+        total_comments += comment_count
+        total_views += view_count
+    
     if len(stats) == 0:
         return 0.0
 
-    avg_engagement = (total_likes + total_comments) / len(stats)
+    avg_engagement = (total_likes + total_comments + total_views) / len(stats)
     
     # 참여율 = (평균 참여) / 구독자 수 * 100
     rate = (avg_engagement / subscriber_count) * 100

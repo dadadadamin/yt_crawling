@@ -3,7 +3,17 @@ uvicorn[standard]
 pydantic
 python-dotenv
 httpx
-scikit-learn
 sqlmodel
 apscheduler
 schedule
+
+# sentiment analysis
+transformers==4.35.0
+torch==2.1.0
+kobert-transformers==0.5.1
+
+# image analysis
+torchvision==0.16.0
+Pillow==10.1.0
+sentence-transformers==2.2.2
+scikit-learn==1.3.2

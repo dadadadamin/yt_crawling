@@ -59,6 +59,13 @@ class Influencer(SQLModel, table=True):
     engagement_rate: Optional[float] = None # 참여율
     last_updated: Optional[datetime] = None # 마지막 업로드시기
 
+    # 새로운 ROI 분석 컬럼들
+    viral_score: Optional[float] = None  # 바이럴 점수
+    avg_views: Optional[int] = None  # 평균 조회수
+    estimated_cpm: Optional[float] = None  # 예상 CPM
+    brand_safety_score: Optional[float] = None  # 브랜드 안전도
+    collab_history: Optional[bool] = None  # 협찬 이력 여부
+
     # Video와의 관계 (Influencer 1 : N Video)
     videos: List[Video] = Relationship(back_populates="channel")
 
