@@ -26,3 +26,7 @@ __test__/
 *.json
 
 db/influencer.db
+
+REFACTORING_PLAN.md
+
+node_modules

@@ -5,7 +5,36 @@ from models.youtube_models import (
     SearchReq, KRPopularReq, VideoStatsReq, CommentsSummaryReq,
     ChannelDetails, VideoStatsOut, CommentsSummaryOut, HomeYoutuberCard, ChannelWithMetrics,LatestCommentsAnalyzeReq, LatestCommentsAnalyzeRes
 )
-from utils.youtube_utils import *
+from utils.youtube_api import (
+    API_KEY,
+    SEARCH_URL,
+    VIDEOS_URL,
+    safe_get,
+    fetch_channel_details,
+    search_channels_by_keyword,
+    collect_channels_from_most_popular,
+    get_uploads_playlist_id,
+    get_recent_video_ids,
+    get_video_stats,
+    fetch_all_comments_for_video,
+    get_latest_video_info,
+    fetch_comments_structured_for_video,
+    sleep_short,
+)
+from utils.youtube_analysis import (
+    extract_keywords_tfidf,
+    basic_sentiment_summary,
+    analyze_comments_keywords,
+    attach_metrics_to_channels,
+    is_personnal_channel,
+)
+from utils.youtube_export import (
+    save_comments_to_csv,
+    export_influencer_metadata_csv,
+    export_video_info_csv,
+    export_category_influencers_csv,
+    export_channel_latest_videos_with_comments_csv,
+)
 from youtube_transcript_api import YouTubeTranscriptApi
 from utils.brand_fit import hybrid_brand_fit
 from models.youtube_models import BrandAnalysisReq, BrandAnalysisOut
@@ -310,3 +339,83 @@ def brand_analysis(req: BrandAnalysisReq):
         matched_tags=result["matched_tags"],
         llm_reason=result["llm_reason"]
     )
+
+
+# --------------------------
+# CSV Export Endpoints
+# --------------------------
+@youtube_router.post("/export/influencer-meta")
+def export_influencer_meta(
+    channel_ids: list[str] | None = None,
+    session: Session = Depends(get_session)
+):
+    """
+    (CSV) 인플루언서 메타데이터 내보내기
+    - channel_ids가 없으면 DB의 Influencer 전체 대상으로 수행
+    - 결과 파일: ./data/influencer_meta.csv
+    """
+    if not channel_ids:
+        ids = [row[0] for row in session.exec(select(Influencer.channel_id)).all()]
+    else:
+        ids = list(dict.fromkeys(channel_ids))
+    if not ids:
+        raise HTTPException(status_code=400, detail="대상 채널이 없습니다.")
+
+    out_path = "./data/influencer_meta.csv"
+    csv_path = export_influencer_metadata_csv(ids, out_path)
+    return {"csv_path": csv_path, "num_channels": len(ids)}
+
+
+@youtube_router.post("/export/video-info")
+def export_video_info(body: dict):
+    """
+    (CSV) 영상 정보 내보내기
+    - 입력: { "video_ids": [...]} 또는 { "channel_id": "UC..." }
+    - channel_id가 있으면 해당 채널의 최근 3개 영상 ID를 자동으로 조회
+    - 결과 파일: ./data/video_info.csv
+    """
+    video_ids = (body or {}).get("video_ids")
+    channel_id = (body or {}).get("channel_id")
+
+    # channel_id가 전달되면 최근 3개 영상 ID 조회
+    if channel_id and (not video_ids or len(video_ids) == 0):
+        up = get_uploads_playlist_id(channel_id)
+        if not up:
+            raise HTTPException(status_code=404, detail="해당 채널의 업로드 재생목록을 찾지 못했습니다.")
+        video_ids = get_recent_video_ids(up, max_results=3)
+
+    if not video_ids:
+        raise HTTPException(status_code=400, detail="video_ids를 전달하거나 channel_id를 제공하세요.")
+
+    out_path = "./data/video_info.csv"
+    csv_path = export_video_info_csv(video_ids, out_path)
+    return {"csv_path": csv_path, "num_videos": len(video_ids)}
+
+
+@youtube_router.post("/export/category-influencers")
+def export_category_influencers(categories: list[str] | None = None):
+    """
+    (CSV) 카테고리별 인플루언서 10개 추출하여 내보내기
+    기본 카테고리: 건강, 뷰티, 게임, 여행, 요리, IT, 음악, 스포츠, 경제
+    - 결과 파일: ./data/category_influencers.csv
+    """
+    default_categories = ["건강","뷰티","게임","여행","요리","IT","음악","스포츠","경제"]
+    cats = categories or default_categories
+    out_path = "./data/category_influencers.csv"
+    csv_path = export_category_influencers_csv(cats, out_path, recent_videos_for_sum=20)
+    return {"csv_path": csv_path, "categories": list(dict.fromkeys(cats))}
+
+
+@youtube_router.post("/export/channel-latest-videos")
+def export_channel_latest_videos(body: dict):
+    """
+    (CSV) 채널ID를 받아 최근 3개 영상 + 좋아요 상위 10개 댓글을 포함한 CSV 생성
+    - 입력 body 예시: { "channel_id": "UCxxxxxxxx" }
+    - 결과 파일: ./data/channel_{channel_id}_latest_videos.csv
+    """
+    channel_id = (body or {}).get("channel_id")
+    if not channel_id:
+        raise HTTPException(status_code=400, detail="channel_id가 필요합니다.")
+    out_path = f"./data/channel_{channel_id}_latest_videos.csv"
+    csv_path = export_channel_latest_videos_with_comments_csv(channel_id, out_path, num_videos=3, top_comments=10)
+    return {"csv_path": csv_path, "channel_id": channel_id}

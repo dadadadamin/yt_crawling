@@ -16,11 +16,13 @@ from db.db import engine, Influencer  # DB 엔진과 모델 가져오기
 
 # 'calculate_engagement_rate' (이전 버전 함수) 제거
 # 'VideoStatsOut' (Video 테이블용) 제거
-from utils.youtube_utils import (
-    search_channels_by_keyword, # 키워드 기준 API 호출 함수
+from utils.youtube_api import (
+    search_channels_by_keyword,
     fetch_channel_details,
     get_recent_video_stats,
-    calculate_engagement_rate_from_stats
+)
+from utils.youtube_analysis import (
+    calculate_engagement_rate_from_stats,
 )
 
 print("[Scheduler] 스케줄러 시작. 6시간마다 데이터를 업데이트합니다.")
